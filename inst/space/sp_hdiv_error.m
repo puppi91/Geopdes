@@ -4,8 +4,8 @@
 %
 % INPUT:
 %
-%    space:   object defining the space of discrete functions (see sp_vector)
-%    msh:     object defining the domain partition and the quadrature rule (see msh_cartesian)
+%    space:   struct defining the space of discrete functions (see sp_vector)
+%    msh:     struct defining the domain partition and the quadrature rule (see msh_cartesian)
 %    u:       vector of dof weights
 %    uex:     function handle to evaluate the exact solution
 %    divuex:  function handle to evaluate the div of the exact solution
@@ -35,7 +35,7 @@
 % along with Octave; see the file COPYING.  If not, see
 % <http://www.gnu.org/licenses/>.function [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem] = sp_hdiv_error (sp, msh, u, uex, divuex)
 
-function [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem] = sp_hdiv_error (sp, msh, u, uex, divuex)
+function [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem] = sp_hdiv_error(sp, msh, u, uex, divuex)
 
   div_valu = sp_eval_msh (u, sp, msh, 'divergence');
   div_valu = reshape (div_valu, 1, msh.nqn, msh.nel);

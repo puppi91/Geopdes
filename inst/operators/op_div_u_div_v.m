@@ -33,8 +33,8 @@
 
 function varargout = op_div_u_div_v (spu, spv, msh)
   
-%   shpu = reshape (spu.shape_function_divs, msh.nqn, spu.nsh_max, msh.nel);
-%   shpv = reshape (spv.shape_function_divs, msh.nqn, spv.nsh_max, msh.nel);
+ % div_shpu = reshape (spu.shape_function_divs, msh.nqn, spu.nsh_max, msh.nel);
+ % div_shpv = reshape (spv.shape_function_divs, msh.nqn, spv.nsh_max, msh.nel);
   
   rows = zeros (msh.nel * spv.nsh_max * spu.nsh_max, 1);
   cols = zeros (msh.nel * spv.nsh_max * spu.nsh_max, 1);
@@ -45,14 +45,14 @@ function varargout = op_div_u_div_v (spu, spv, msh)
   ncounter = 0;
   for iel = 1:msh.nel
       if (all (msh.jacdet(:, iel)))
-          divu_iel = reshape (spu.shape_function_divs(:, 1:spu.nsh(iel), iel), ...
-              msh.nqn, 1, spu.nsh(iel));
-          
-          divv_iel = reshape (spv.shape_function_divs(:, 1:spv.nsh(iel), iel), ...
-              msh.nqn, spv.nsh(iel));
-          %       divv_iel = repmat (divv_iel, [1,spq.nsh(iel),1]);
-%       shpq_iel = repmat (shpq_iel, [1,1,spv.nsh(iel)]);
-
+%           divu_iel = reshape (div_shpu( :, 1:spu.nsh(iel), iel), ...
+%                msh.nqn, 1, spu.nsh(iel));
+%           
+%           divv_iel = reshape (div_shpv( :, 1:spv.nsh(iel), iel), ...
+%               msh.nqn, spv.nsh(iel), 1);
+      divu_iel = reshape (spu.shape_function_divs(:, 1:spu.nsh(iel), iel), ...
+                           msh.nqn, 1, spu.nsh(iel));
+      divv_iel = reshape (spv.shape_function_divs(:, 1:spv.nsh(iel), iel), msh.nqn, spv.nsh(iel), 1);                  
       jacdet_iel = reshape (jacdet_weights(:,iel), [msh.nqn,1,1]);
 
       jacdet_divu = bsxfun (@times, jacdet_iel, divu_iel);
@@ -81,20 +81,15 @@ function varargout = op_div_u_div_v (spu, spv, msh)
 
 end
 
-
-% COPY OF THE FIRST VERSION OF THE FUNCTION (MORE UNDERSTANDABLE)
-% 
-% function mat = op_div_v_q (spv, spq, msh)
-%   
-%   mat = spalloc(spq.ndof, spv.ndof, 1);
+% mat = spalloc(spv.ndof, spu.ndof, 1);
 %   
 %   for iel = 1:msh.nel
 %     if (all (msh.jacdet(:, iel)))
-%       mat_loc = zeros (spq.nsh(iel), spv.nsh(iel));
-%       for idof = 1:spq.nsh(iel)
-%         ishp = spq.shape_functions(:, idof, iel);
-%         for jdof = 1:spv.nsh(iel) 
-%           jshd = spv.shape_function_divs(:, jdof, iel);
+%       mat_loc = zeros (spv.nsh(iel), spu.nsh(iel));
+%       for idof = 1:spv.nsh(iel)
+%         ishp = spv.shape_function_divs(:, idof, iel);
+%         for jdof = 1:spu.nsh(iel) 
+%           jshd = spu.shape_function_divs(:, jdof, iel);
 % % The cycle on the quadrature points is vectorized
 %           %for inode = 1:msh.nqn
 %           mat_loc(idof, jdof) = mat_loc(idof, jdof) + ...
@@ -102,11 +97,13 @@ end
 %           %end  
 %         end
 %       end
-%       mat(spq.connectivity(:, iel), spv.connectivity(:, iel)) = ...
-%         mat(spq.connectivity(:, iel), spv.connectivity(:, iel)) + mat_loc;
+%       mat(spv.connectivity(:, iel), spu.connectivity(:, iel)) = ...
+%         mat(spv.connectivity(:, iel), spu.connectivity(:, iel)) + mat_loc;
 %     else
 %       warning ('geopdes:jacdet_zero_at_quad_node', 'op_div_v_q: singular map in element number %d', iel)
 %     end
 %   end
-% 
-% end
+%   
+%   varargout{1} = mat;
+
+
