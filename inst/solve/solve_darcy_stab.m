@@ -116,24 +116,7 @@ press = zeros (space_p.ndof, 1);
 % Apply natural boundary conditions
 rhs_nmnn = zeros(space_v.ndof,1);
 for iside = nmnn_sides
-  msh_side = msh_eval_boundary_side (msh, iside);
-  if (strcmpi (element_name, 'RT') || strcmpi (element_name, 'NDL'))
-    msh_side_from_interior = msh_boundary_side_from_interior (msh, iside);
-
-    sp_side = space_v.constructor (msh_side_from_interior);
-    sp_side = struct (sp_precompute (sp_side, msh_side_from_interior, 'value', true));
-    sp_side.dofs = 1:sp_side.ndof;
-  else
-    sp_side  = sp_eval_boundary_side (space_v, msh_side);
-  end
-
-  x = cell (msh_side.rdim, 1);
-  for idim = 1:msh_side.rdim
-    x{idim} = squeeze (msh_side.geo_map(idim,:,:));
-  end
-  pval = reshape (p_D (x{:}, iside), msh.rdim, msh_side.nqn, msh_side.nel);
-
-  rhs_nmnn(sp_side.dofs) = rhs_nmnn(sp_side.dofs) - op_f_v (sp_side, msh_side, gval);
+    %DA FARE
 end
 
 % Apply Dirichlet  boundary conditions. For RT and NDL elements the normal
