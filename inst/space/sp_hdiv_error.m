@@ -1,14 +1,14 @@
 % SP_HDIV_ERROR: Evaluate the error in H(div) norm.
 %
-%   [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem] = sp_hdiv_error (space, msh, u, uex, divuex);
+%   [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem] = sp_hdiv_error (space, msh, u, uex, divuex, varargin);
 %
 % INPUT:
 %
-%    space:   struct defining the space of discrete functions (see sp_vector)
-%    msh:     struct defining the domain partition and the quadrature rule (see msh_cartesian)
-%    u:       vector of dof weights
-%    uex:     function handle to evaluate the exact solution
-%    divuex:  function handle to evaluate the div of the exact solution
+%    space:     struct defining the space of discrete functions (see sp_vector)
+%    msh:       struct defining the domain partition and the quadrature rule (see msh_cartesian)
+%    u:         vector of dof weights
+%    uex:       function handle to evaluate the exact solution
+%    divuex:    function handle to evaluate the div of the exact solution
 %
 % OUTPUT:
 %
@@ -33,27 +33,28 @@
 %
 % You should have received a copy of the GNU General Public License
 % along with Octave; see the file COPYING.  If not, see
-% <http://www.gnu.org/licenses/>.function [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem] = sp_hdiv_error (sp, msh, u, uex, divuex)
+% <http://www.gnu.org/licenses/>.function [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem, varargout] = sp_hdiv_error (sp, msh, u, uex, divuex, varargin)
 
 function [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem] = sp_hdiv_error(sp, msh, u, uex, divuex)
 
-  div_valu = sp_eval_msh (u, sp, msh, 'divergence');
-  div_valu = reshape (div_valu, 1, msh.nqn, msh.nel);
+div_valu = sp_eval_msh (u, sp, msh, 'divergence');
+div_valu = reshape (div_valu, 1, msh.nqn, msh.nel);
 
-  for idir = 1:msh.rdim
+for idir = 1:msh.rdim
     x{idir} = reshape (msh.geo_map(idir,:,:), msh.nqn*msh.nel, 1);
-  end
-  div_valex  = reshape (feval (divuex, x{:}), 1, msh.nqn, msh.nel);
+end
+div_valex  = reshape (feval (divuex, x{:}), 1, msh.nqn, msh.nel);
 
-  w = msh.quad_weights .* msh.jacdet;
+w = msh.quad_weights .* msh.jacdet;
 
-  [errl2, errl2_elem] = sp_l2_error (sp, msh, u, uex);
-  errhdivs_elem = sum (reshape (sum ((div_valu - div_valex).^2, 1), [msh.nqn, msh.nel]) .* w);
-  errhdivs = sqrt (sum (errhdivs_elem));
+[errl2, errl2_elem] = sp_l2_error (sp, msh, u, uex);
+errhdivs_elem = sum (reshape (sum ((div_valu - div_valex).^2, 1), [msh.nqn, msh.nel]) .* w);
+errhdivs = sqrt (sum (errhdivs_elem));
 
-  errhdiv  = sqrt (errl2^2 + errhdivs^2);
+errhdiv  = sqrt (errl2^2 + errhdivs^2);
 
-  errhdiv_elem  = sqrt (errl2_elem.^2 + errhdivs_elem);
-  errhdivs_elem = sqrt (errhdivs_elem);
-  
+errhdiv_elem  = sqrt (errl2_elem.^2 + errhdivs_elem);
+errhdivs_elem = sqrt (errhdivs_elem);
+
+
 end

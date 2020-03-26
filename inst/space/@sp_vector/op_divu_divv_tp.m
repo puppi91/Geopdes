@@ -1,7 +1,7 @@
-% OP_DIV_U_DIV_V_TP: assemble the matrix B = [b(i,j)], b(i,j) = (div v_j, div v_i), exploiting the tensor product structure.
+% OP_DIVU_DIVV_TP: assemble the matrix B = [b(i,j)], b(i,j) = (div v_j, div v_i), exploiting the tensor product structure.
 %
-%   mat = op_div_u_div_v_tp (spu, spv, msh);
-%   [rows, cols, values] = op_div_u_div_v_tp (spu, spv, msh);
+%   mat = op_divu_divv_tp (spu, spv, msh);
+%   [rows, cols, values] = op_divu_divv_tp (spu, spv, msh);
 %
 % INPUT:
 %
@@ -31,7 +31,7 @@
 %    You should have received a copy of the GNU General Public License
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function varargout = op_div_u_div_v_tp (space1, space2, msh)
+function varargout = op_divu_divv_tp (space1, space2, msh)
 
 A = spalloc (space2.ndof, space1.ndof, 3*space1.ndof);
 
@@ -40,7 +40,7 @@ for iel = 1:msh.nel_dir(1)
     sp1_col = sp_evaluate_col (space1, msh_col,'value', false, 'divergence', true);
     sp2_col = sp_evaluate_col (space2, msh_col, 'value', false, 'divergence', true);
     
-    A = A + op_div_u_div_v (sp1_col, sp2_col, msh_col);
+    A = A + op_divu_divv (sp1_col, sp2_col, msh_col);
 end
 
 if (nargout == 1)

@@ -1,4 +1,4 @@
-% OP_UDOTN_VDOTN: assemble the matrix M = [m(i,j)], m(i,j) = (mu u_j * n, v_i * n), with n the exterior normal vector.
+% OP_UDOTN_VDOTN: assemble the matrix M = [m(i,j)], m(i,j) = (u_j * n, v_i * n), with n the exterior normal vector.
 %
 %   mat = op_udotn_vdotn (spu, spv, msh, coeff);
 %   [rows, cols, values] = op_udotn_vdotn (spu, spv, msh, coeff);

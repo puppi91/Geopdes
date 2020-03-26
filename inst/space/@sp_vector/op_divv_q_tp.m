@@ -1,7 +1,7 @@
-% OP_DIV_V_Q_TP: assemble the matrix B = [b(i,j)], b(i,j) = (q_i, div v_j), exploiting the tensor product structure.
+% OP_DIVV_Q_TP: assemble the matrix B = [b(i,j)], b(i,j) = (q_i, div v_j), exploiting the tensor product structure.
 %
-%   mat = op_div_v_q_tp (spv, spq, msh);
-%   [rows, cols, values] = op_div_v_q_tp (spv, spq, msh);
+%   mat = op_divv_q_tp (spv, spq, msh);
+%   [rows, cols, values] = op_divv_q_tp (spv, spq, msh);
 %
 % INPUT: 
 %
@@ -32,7 +32,7 @@
 %    You should have received a copy of the GNU General Public License
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function varargout = op_div_v_q_tp (spv, spq, msh)
+function varargout = op_divv_q_tp (spv, spq, msh)
 
   A = spalloc (spq.ndof, spv.ndof, 3*spv.ndof);
 
@@ -42,7 +42,7 @@ function varargout = op_div_v_q_tp (spv, spq, msh)
 			       'value', false);
     spq_col = sp_evaluate_col (spq, msh_col);
 
-    A = A + op_div_v_q (spv_col, spq_col, msh_col);
+    A = A + op_divv_q (spv_col, spq_col, msh_col);
   end
 
   if (nargout == 1)

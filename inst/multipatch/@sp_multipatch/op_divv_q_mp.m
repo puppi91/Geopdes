@@ -1,4 +1,4 @@
-% OP_DIV_V_Q_MP: assemble the matrix B = [b(i,j)], b(i,j) = (q_i, div v_j), in a multipatch domain.
+% OP_DIVV_Q_MP: assemble the matrix B = [b(i,j)], b(i,j) = (q_i, div v_j), in a multipatch domain.
 %
 %   mat = op_div_v_q_mp (spv, spq, msh, [patches])
 %
@@ -28,7 +28,7 @@
 %    You should have received a copy of the GNU General Public License
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function A = op_div_v_q_mp (spv, spq, msh, patch_list)
+function A = op_divv_q_mp (spv, spq, msh, patch_list)
 
   if (nargin < 4)
     patch_list = 1:msh.npatch;
@@ -40,7 +40,7 @@ function A = op_div_v_q_mp (spv, spq, msh, patch_list)
   
   ncounter = 0;
   for iptc = patch_list
-    [rs, cs, vs] = op_div_v_q_tp (spv.sp_patch{iptc}, spq.sp_patch{iptc}, msh.msh_patch{iptc});
+    [rs, cs, vs] = op_divv_q_tp (spv.sp_patch{iptc}, spq.sp_patch{iptc}, msh.msh_patch{iptc});
     rows(ncounter+(1:numel (rs))) = spq.gnum{iptc}(rs);
     cols(ncounter+(1:numel (rs))) = spv.gnum{iptc}(cs);
 

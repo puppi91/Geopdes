@@ -1,7 +1,7 @@
-% OP_DIV_V_Q: assemble the matrix B = [b(i,j)], b(i,j) = (q_i, div v_j).
+% OP_DIVV_Q: assemble the matrix B = [b(i,j)], b(i,j) = (q_i, div v_j).
 %
-%   mat = op_div_v_q (spv, spq, msh);
-%   [rows, cols, values] = op_div_v_q (spv, spq, msh);
+%   mat = op_divv_q (spv, spq, msh);
+%   [rows, cols, values] = op_divv_q (spv, spq, msh);
 %
 % INPUT: 
 %
@@ -32,7 +32,7 @@
 %    You should have received a copy of the GNU General Public License
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function varargout = op_div_v_q (spv, spq, msh)
+function varargout = op_divv_q (spv, spq, msh)
   
   rows = zeros (msh.nel * spq.nsh_max * spv.nsh_max, 1);
   cols = zeros (msh.nel * spq.nsh_max * spv.nsh_max, 1);

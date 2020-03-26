@@ -65,7 +65,7 @@
 %    You should have received a copy of the GNU General Public License
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function [geometry, msh, space_v, vel, space_p, press, p_dofs, M_u, M_p, A, B] = ...
+function [geometry, msh, space_v, vel, space_p, press, int_dofs, p_dofs, M_ur, M_pr, Ar, B0r, B1r] = ...
                           solve_darcy_stab (problem_data, method_data)
 
 % Extract the fields from the data structures into local variables
@@ -103,12 +103,14 @@ elseif (msh.rdim == 3)
   fun_one = @(x, y, z) ones (size(x));
 end
 A = op_u_v_tp (space_v, space_v, msh, permeability); 
-B = op_div_v_q_tp (space_v, space_p, msh);
+B0 = op_divv_q_tp (space_v, space_p, msh);
 E = op_f_v_tp (space_p, msh, fun_one).';
 F = op_f_v_tp (space_v, msh, f);
-G = op_f_v_tp (space_p, msh, g);
+G0 = op_f_v_tp (space_p, msh, g);
+% matrix inducing scalar product for pressures
 M_p = op_u_v_tp (space_p, space_p, msh);
-M_u = op_u_v_tp (space_v, space_v, msh) + op_div_u_div_v_tp (space_v, space_v, msh);
+% matrix inducing scalar product for velocities
+M_u = op_u_v_tp (space_v, space_v, msh) + op_divu_divv_tp (space_v, space_v, msh); 
 
 vel   = zeros (space_v.ndof, 1);
 press = zeros (space_p.ndof, 1);
@@ -116,23 +118,75 @@ press = zeros (space_p.ndof, 1);
 % Apply natural boundary conditions
 rhs_nmnn = zeros(space_v.ndof,1);
 for iside = nmnn_sides
-    %DA FARE
+    msh_side = msh_eval_boundary_side (msh, iside);
+    msh_side_from_interior = msh_boundary_side_from_interior (msh, iside);
+    sp_side_v = space_v.constructor (msh_side_from_interior);
+    sp_side_v = struct (sp_precompute (sp_side_v, msh_side_from_interior, 'value', true));
+    sp_side_v.dofs = 1:sp_side_v.ndof;
+    x = cell (msh_side.rdim, 1);
+    for idim = 1:msh_side.rdim
+        x{idim} = squeeze (msh_side.geo_map(idim,:,:));
+    end
+    pval = reshape (p_D (x{:}, iside), 1, msh_side.nqn, msh_side.nel);
+    rhs_nmnn(sp_side_v.dofs) = rhs_nmnn(sp_side_v.dofs) + op_f_vdotn(sp_side_v, msh_side, pval);
 end
 
-% Apply Dirichlet  boundary conditions. For RT and NDL elements the normal
-%  component is imposed strongly, and the tangential one is imposed weakly.
+% Apply essential boundary conditions in a strong sense
 if (strcmpi (element_name, 'RT') || strcmpi (element_name, 'NDL'))
   [vel_drchlt, drchlt_dofs] = sp_drchlt_l2_proj_udotn (space_v, msh, drchlt_sides, velex);
   else
   [vel_drchlt, drchlt_dofs] = sp_drchlt_l2_proj (space_v, msh, u_N, drchlt_sides);
 end
 
+An = spalloc (space_v.ndof, space_v.ndof, 3*space_v.ndof);
+Bn = spalloc (space_p.ndof, space_v.ndof, 3*space_v.ndof);
+Fn = spalloc (space_v.ndof, 1, space_v.ndof);
+Gn = spalloc (space_p.ndof, 1, space_p.ndof);
+M_un = spalloc (space_v.ndof, space_v.ndof, 3*space_v.ndof);
+M_pn = spalloc (space_p.ndof, space_p.ndof, 3*space_p.ndof);
+
+% Apply essential boundary conditions in a weak sense
+for iside = weak_drchlt_sides
+    msh_side = msh_eval_boundary_side (msh, iside);
+    msh_side_from_interior = msh_boundary_side_from_interior (msh, iside);
+    sp_side_v = space_v.constructor (msh_side_from_interior);
+    sp_side_v = struct (sp_precompute (sp_side_v, msh_side_from_interior, 'value', true));
+    sp_side_p = space_p.constructor (msh_side_from_interior);
+    sp_side_p = struct (sp_precompute (sp_side_p, msh_side_from_interior, 'value', true));
+    for idim = 1:msh.rdim
+        x{idim} = reshape (msh_side.geo_map(idim,:,:), msh_side.nqn, msh_side.nel);
+    end
+    mat_udotn_vdotn = op_udotn_vdotn (sp_side_v, sp_side_v, msh_side, 1./msh_side.charlen);
+    An = An + Cpen*mat_udotn_vdotn;
+    Bn = Bn + op_q_v_n (sp_side_v, sp_side_p, msh_side);
+    vel_times_coeff = bsxfun (@times, velex(x{:}, iside), reshape([1./msh_side.charlen;1./msh_side.charlen], [2, size(msh_side.charlen)]));
+    Fn = Fn + Cpen*op_fdotn_vdotn (sp_side_v, msh_side, vel_times_coeff);
+    %Gn = Gn + op_fdotn_v (sp_side_p, msh_side, velex(x{:}, iside));
+     Gn = Gn + op_f_v (sp_side_p, msh_side, u_N(x{:}, iside));
+    M_un = M_un + mat_udotn_vdotn;
+    M_pn = M_pn + op_u_v (sp_side_p, sp_side_p, msh_side, msh_side.charlen);
+end
+A = A + An;
+B1 = B0 - Bn;
+G1 = G0 - Gn;
+F = F + Fn;
+M_u = M_u + M_un;
+M_p = M_p + M_pn;
+
+p_dofs = 1:space_p.ndof;
 vel(drchlt_dofs) = vel_drchlt;
 int_dofs = setdiff (1:space_v.ndof, drchlt_dofs);
 nintdofs = numel (int_dofs);
-rhs_dir  = -A(int_dofs, drchlt_dofs)*vel(drchlt_dofs);
+if ~isempty(drchlt_dofs)
+    if symmetric
+        rhs_dir  = [-A(int_dofs, drchlt_dofs); ...
+           B1(p_dofs, drchlt_dofs)]*vel(drchlt_dofs);
+    else
+        rhs_dir  = [-A(int_dofs, drchlt_dofs); ...
+           B0(p_dofs, drchlt_dofs)]*vel(drchlt_dofs);
+    end
+end
 
-p_dofs = 1:space_p.ndof;
 if method_data.stab
     % JUST FOR DEBUGGING: matrice di restrizione da non stabilizzato a stabilizzato
     C = speye(space_p.ndof);
@@ -158,29 +212,47 @@ if method_data.stab
     M_p = C*M_p;
 end
 
-% Solve the linear system
-if (isempty (nmnn_sides))
-% If all the sides are Dirichlet, the pressure is zero averaged.
-  mat = [ A(int_dofs, int_dofs) , -B(p_dofs,int_dofs).', sparse(nintdofs, 1);
-         -B(p_dofs,int_dofs),  sparse(length(p_dofs), length(p_dofs)), E(p_dofs).';
-          sparse(1, nintdofs),  E(p_dofs),  0];
-  rhs = [F(int_dofs) + rhs_dir; 
-         -G(p_dofs)+B(p_dofs, drchlt_dofs)*vel(drchlt_dofs);
-         0];
-
-  sol = mat \ rhs;
-  vel(int_dofs) = sol(1:nintdofs);
-  press = sol(1+nintdofs:end-1);
+% assemble the final matrix
+if symmetric
+    mat = [ A(int_dofs, int_dofs), -B1(:,int_dofs).';
+        -B1(:,int_dofs),  sparse(size (B1,1), size (B1,1))];
+    rhs = [F(int_dofs) - rhs_nmnn(int_dofs);
+        -G1 ];
 else
-% With natural boundary condition, the constraint on the pressure is not needed.
-  mat = [ A(int_dofs, int_dofs), -B(:,int_dofs).';
-         -B(:,int_dofs),  sparse(size (B,1), size (B,1))];
-  rhs = [F(int_dofs)+ rhs_dir + rhs_nmnn(int_dofs);
-         B(:, drchlt_dofs)*vel(drchlt_dofs)];
-
-  sol = mat \ rhs;
-  vel(int_dofs) = sol(1:nintdofs);
-  press = sol(1+nintdofs:end);
+    mat = [ A(int_dofs, int_dofs), -B1(:,int_dofs).';
+        -B1(:,int_dofs),  sparse(size (B1,1), size (B1,1))];
+    rhs = [F(int_dofs) - rhs_nmnn(int_dofs);
+        -G0 ];
 end
+
+% add strong Dirichlet b.c.
+if ~isempty(drchlt_sides)
+   rhs = rhs + rhs_dir; 
+end
+
+% filter out constant pressures in the case of no natural b.c. 
+if isempty (nmnn_sides)
+   avg_pres_vec = [spalloc(1, nintdofs, 0), E(p_dofs)];
+   mat = [mat, avg_pres_vec'; ...
+       avg_pres_vec, 0];
+   rhs = [rhs; 0];
+end
+
+% solve the linear system
+sol = mat \ rhs;
+vel(int_dofs) = sol(1:nintdofs);
+if isempty (nmnn_sides)
+    press = sol(1+nintdofs:end-1);
+else
+    press = sol(1+nintdofs:end);
+end
+
+% restrict to the right dofs
+Ar = A(int_dofs, int_dofs);
+B0r = B0(p_dofs,int_dofs);
+B1r = B1(p_dofs,int_dofs);
+M_ur = M_u(int_dofs,int_dofs);
+M_pr = M_p(p_dofs,p_dofs);
+
 
 end

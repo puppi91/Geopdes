@@ -1,7 +1,7 @@
-% OP_DIV_U_DIV_V: assemble the matrix B = [b(i,j)], b(i,j) = (div v_j, div v_i).
+% OP_DIVU_DIVV: assemble the matrix B = [b(i,j)], b(i,j) = (div v_j, div v_i).
 %
-%   mat = op_div_u_div_v (spu, spv, msh);
-%   [rows, cols, values] = op_div_u_div_v (spu, spv, msh);
+%   mat = op_divu_divv (spu, spv, msh);
+%   [rows, cols, values] = op_divu_divv (spu, spv, msh);
 %
 % INPUT: 
 %
@@ -31,7 +31,7 @@
 %    You should have received a copy of the GNU General Public License
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function varargout = op_div_u_div_v (spu, spv, msh)
+function varargout = op_divu_divv (spu, spv, msh)
   
  % div_shpu = reshape (spu.shape_function_divs, msh.nqn, spu.nsh_max, msh.nel);
  % div_shpv = reshape (spv.shape_function_divs, msh.nqn, spv.nsh_max, msh.nel);

@@ -29,28 +29,27 @@
 
 
 function rhs = op_f_vdotn (spv, msh, coeff)
-  
-  %coeff = reshape (coeff, spv.ncomp, msh.nqn, msh.nel);
-  shpv  = reshape (spv.shape_functions, spv.ncomp, msh.nqn, spv.nsh_max, msh.nel);
 
-  rhs = zeros (spv.ndof, 1);
+shpv = reshape (spv.shape_functions, spv.ncomp, msh.nqn, spv.nsh_max, msh.nel);
+coeff = reshape (coeff, 1, msh.nqn, msh.nel);
 
-  for iel = 1:msh.nel
+rhs = zeros (spv.ndof,1);
+for iel = 1:msh.nel
     if (all (msh.jacdet(:,iel)))
-     jacdet_weights = reshape (msh.jacdet(:, iel) .* msh.quad_weights(:, iel), 1, msh.nqn);
-     shpv_iel = reshape (shpv(:, :, 1:spv.nsh(iel), iel), spv.ncomp, msh.nqn, spv.nsh(iel));
-     shpv_dot_n  = sum (bsxfun (@times, shpv_iel, msh.normal(:,:,iel)), 1);
-     
-     coeff_times_jw = bsxfun (@times, jacdet_weights, coeff(:,:,iel));
-
+        shpv_iel = reshape (shpv(:, :, 1:spv.nsh(iel), iel), spv.ncomp, msh.nqn, spv.nsh(iel), 1);
+        shpv_dot_n = sum (bsxfun (@times, shpv_iel, msh.normal(:,:,iel)), 1);
         
-     aux_val = bsxfun (@times, coeff_times_jw, shpv_dot_n);
-     rhs_loc = sum (sum (aux_val, 1), 2);
-     rhs(spv.connectivity(1:spv.nsh(iel), iel)) = rhs(spv.connectivity(1:spv.nsh(iel), iel)) + rhs_loc(:); 
-    else
-      warning ('geopdes:jacdet_zero_at_quad_node', 'op_f_vdotn: singular map in element number %d', iel)
+        jacdet_weights = reshape (msh.jacdet(:, iel) .* msh.quad_weights(:, iel), 1, msh.nqn);
+        coeff_times_jw = bsxfun (@times, jacdet_weights, coeff(:,:,iel));
+        
+        aux_val = bsxfun (@times, coeff_times_jw, shpv_dot_n);
+        %reshape (sum (tmp1, 2), spv.nsh(iel), spu.nsh(iel));
+        rhs_loc = sum (sum (aux_val, 1), 2);
+        rhs(spv.connectivity(1:spv.nsh(iel), iel)) = rhs(spv.connectivity(1:spv.nsh(iel), iel)) + rhs_loc(:);
     end
-  end
+end
+
+
 
 end
 

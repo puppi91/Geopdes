@@ -53,7 +53,7 @@ function rhs = op_f_v (spv, msh, coeff)
  
 end
 
-%% COPY OF THE FIRST VERSION OF THE FUNCTION (MORE UNDERSTANDABLE)
+% COPY OF THE FIRST VERSION OF THE FUNCTION (MORE UNDERSTANDABLE)
 % 
 % function rhs = op_f_v (spv, msh, coeff)
 %   

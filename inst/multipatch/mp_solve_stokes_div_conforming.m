@@ -109,7 +109,7 @@ elseif (msh.rdim == 3)
 end
 
 A = op_gradu_gradv_mp (space_v, space_v, msh, viscosity);
-B = op_div_v_q_mp (space_v, space_p, msh);
+B = op_divv_q_mp (space_v, space_p, msh);
 E = (op_f_v_mp (space_p, msh, fun_one)).';
 F = op_f_v_mp (space_v, msh, f);
 
