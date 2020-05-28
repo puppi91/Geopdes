@@ -1,7 +1,9 @@
 % Modified by Riccardo in order to test stabilization of pressures for
 % Darcy
 
-% SOLVE_DARCY_STAB: Solve a Darcy problem with a B-spline discretization. 
+% use the norm proposed by Erik Burman for the pressures
+
+% SOLVE_DARCY_STAB_BURMAN: Solve a Darcy problem with a B-spline discretization. 
 %
 % The function solves the Stokes problem
 %
@@ -66,7 +68,7 @@
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 function [geometry, msh, space_v, vel, space_p, press, int_dofs, p_dofs, M_ur, M_pr, Ar, B0r, B1r] = ...
-                          solve_darcy_stab (problem_data, method_data)
+                          solve_darcy_stab_burman (problem_data, method_data)
 
 % Extract the fields from the data structures into local variables
 data_names = fieldnames (problem_data);
@@ -93,7 +95,7 @@ rule       = msh_gauss_nodes (nquad);
 msh        = msh_cartesian (zeta, qn, qw, geometry);
 
 % Compute the space structures
-[space_v, space_p] = sp_bspline_fluid (element_name, ...
+[space_v, space_p] = sp_bspline_fluid_mod (element_name, ...
                 geometry.nurbs.knots, nsub, degree, regularity, msh);
 
 % Assemble the matrices
@@ -109,6 +111,11 @@ F = op_f_v_tp (space_v, msh, f);
 G0 = op_f_v_tp (space_p, msh, g);
 % matrix inducing scalar product for pressures
 M_p = op_u_v_tp (space_p, space_p, msh);
+M_p = op_gradu_gradv_el (space_p, space_p, msh);
+
+
+
+
 % matrix inducing scalar product for velocities
 M_u = op_u_v_tp (space_v, space_v, msh) + op_divu_divv_tp (space_v, space_v, msh); 
 
@@ -196,7 +203,7 @@ if symmetric
         -G1 ];
 else
     mat = [ A(int_dofs, int_dofs), -B1(:,int_dofs).';
-        -B0(:,int_dofs),  sparse(size (B1,1), size (B1,1))];
+        -B1(:,int_dofs),  sparse(size (B1,1), size (B1,1))];
     rhs = [F(int_dofs) - rhs_nmnn(int_dofs);
         -G0 ];
 end
