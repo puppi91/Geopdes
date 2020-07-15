@@ -102,7 +102,7 @@ elseif (msh.rdim == 3)
   fun_one = @(x, y, z) ones (size(x));
 end
 A = op_gradu_gradv_tp (space_v, space_v, msh, viscosity); 
-B = op_div_v_q_tp (space_v, space_p, msh);
+B = op_divv_q_tp (space_v, space_p, msh);
 E = op_f_v_tp (space_p, msh, fun_one).';
 F = op_f_v_tp (space_v, msh, f);
 
