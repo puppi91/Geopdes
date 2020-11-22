@@ -1,29 +1,34 @@
-% Modified by Riccardo in order to test stabilization of pressures for
-% Darcy
-
-% SOLVE_DARCY_STAB: Solve a Darcy problem with a B-spline discretization. 
+% SOLVE_DARCY_BIS: Solve a Darcy problem with a B-spline discretization. 
 %
 % The function solves the Stokes problem
 %
-%   k*vel + grad(press) = f    in Omega
+%   k*vel -  grad(press) = f    in Omega
 %              div(vel) = g    in Omega
 %                     p = p_D  on Gamma_N (natural b.c.)
 %           vel\cdot \n = U_N  on Gamma_D (essential b.c.)
 %
+% using the formulation
+% 
+% (u_h,v_h) + Cpen*<u_h \cdot n, v_h\cdot n>_WE - (p_h, div v_h) 
+%   = (f,v_h) + <Cpen*u_N+p_D, v_h\cdot n>_WE 
+%  - <p_D, v_h\cdot n>_N
+%  -(q_h, div u_h)  = -(q_h, g) 
+%
+%
 % USAGE:
 %
 %  [geometry, msh, space_v, vel, space_p, press] = ...
-%                        solve_darcy_stab (problem_data, method_data)
+%                        solve_darcy_bis (problem_data, method_data)
 %
 % INPUT:
 %
 %  problem_data: a structure with data of the problem. It contains the fields:
 %    - geo_name:     name of the file containing the geometry
-%    - nmnn_sides:   sides with natural boundary condition (may be empty)
-%    - drchlt_sides: sides with Dirichlet boundary condition
+%    - ntrl_sides:   sides with natural boundary condition (may be empty)
+%    - essntl_sides: sides with essential boundary condition
 %    - f:            force term
 %    - g:            mass term
-%    - p_D:          function for natural condition (if nmnn_sides is not empty)
+%    - p_D:          function for natural condition (if ntrl_sides is not empty)
 %    - u_N:          function for Dirichlet boundary condition
 %    - permeability: permeability coefficient (mu in the equation)
 %
@@ -40,6 +45,8 @@
 %                     +RT  the generalized Raviart-Thomas element
 %                     +NDL the generalized Nedelec element of the second class
 %                    for more details see the references below
+%     - Cpen:        penalty parameter (for the weak imposition of the essential b.c.)
+%
 % OUTPUT:
 %
 %  geometry: geometry structure (see geo_load)
@@ -65,8 +72,8 @@
 %    You should have received a copy of the GNU General Public License
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function [geometry, msh, space_v, vel, space_p, press, int_dofs, p_dofs, M_ur, M_pr, Ar, B0r, B1r] = ...
-                          solve_darcy_stab (problem_data, method_data)
+function [geometry, msh, space_v, vel, space_p, press, int_dofs, p_dofs, M_ur, M_pr, Ar, B0r] = ...
+                          solve_darcy_bis (problem_data, method_data)
 
 % Extract the fields from the data structures into local variables
 data_names = fieldnames (problem_data);
@@ -116,8 +123,8 @@ vel   = zeros (space_v.ndof, 1);
 press = zeros (space_p.ndof, 1);
 
 % Apply natural boundary conditions
-rhs_nmnn = zeros(space_v.ndof,1);
-for iside = nmnn_sides
+rhs_ntrl = zeros(space_v.ndof,1);
+for iside = ntrl_sides
     msh_side = msh_eval_boundary_side (msh, iside);
     msh_side_from_interior = msh_boundary_side_from_interior (msh, iside);
     sp_side_v = space_v.constructor (msh_side_from_interior);
@@ -128,25 +135,23 @@ for iside = nmnn_sides
         x{idim} = squeeze (msh_side.geo_map(idim,:,:));
     end
     pval = reshape (p_D (x{:}, iside), 1, msh_side.nqn, msh_side.nel);
-    rhs_nmnn(sp_side_v.dofs) = rhs_nmnn(sp_side_v.dofs) + op_f_vdotn(sp_side_v, msh_side, pval);
+    rhs_ntrl(sp_side_v.dofs) = rhs_ntrl(sp_side_v.dofs) + op_f_vdotn(sp_side_v, msh_side, pval);
 end
 
 % Apply essential boundary conditions in a strong sense
 if (strcmpi (element_name, 'RT') || strcmpi (element_name, 'NDL'))
-  [vel_drchlt, drchlt_dofs] = sp_drchlt_l2_proj_udotn (space_v, msh, drchlt_sides, velex);
+  [vel_essntl, essntl_dofs] = sp_drchlt_l2_proj_udotn (space_v, msh, essntl_sides, velex);
   else
-  [vel_drchlt, drchlt_dofs] = sp_drchlt_l2_proj (space_v, msh, u_N, drchlt_sides);
+  [vel_essntl, essntl_dofs] = sp_drchlt_l2_proj (space_v, msh, u_N, essntl_sides);
 end
 
 An = spalloc (space_v.ndof, space_v.ndof, 3*space_v.ndof);
-Bn = spalloc (space_p.ndof, space_v.ndof, 3*space_v.ndof);
 Fn = spalloc (space_v.ndof, 1, space_v.ndof);
-Gn = spalloc (space_p.ndof, 1, space_p.ndof);
 M_un = spalloc (space_v.ndof, space_v.ndof, 3*space_v.ndof);
 M_pn = spalloc (space_p.ndof, space_p.ndof, 3*space_p.ndof);
 
 % Apply essential boundary conditions in a weak sense
-for iside = weak_drchlt_sides
+for iside = weak_essntl_sides
     msh_side = msh_eval_boundary_side (msh, iside);
     msh_side_from_interior = msh_boundary_side_from_interior (msh, iside);
     sp_side_v = space_v.constructor (msh_side_from_interior);
@@ -158,57 +163,51 @@ for iside = weak_drchlt_sides
     end
     mat_udotn_vdotn = op_udotn_vdotn (sp_side_v, sp_side_v, msh_side, ones(msh_side.nqn, msh_side.nel));
     An = An + Cpen*mat_udotn_vdotn;
-    Bn = Bn + op_q_v_n (sp_side_v, sp_side_p, msh_side);
     vel_times_coeff = bsxfun (@times, velex(x{:}, iside), ones(msh_side.rdim, msh_side.nqn, msh_side.nel));
-    Fn = Fn + Cpen*op_fdotn_vdotn (sp_side_v, msh_side, vel_times_coeff);
-    Gn = Gn + op_f_v (sp_side_p, msh_side, u_N(x{:}, iside));
+    pval = reshape (p_D (x{:}, iside), 1, msh_side.nqn, msh_side.nel);
+    Fn = Fn + Cpen*op_fdotn_vdotn (sp_side_v, msh_side, vel_times_coeff)...
+        + op_f_vdotn(sp_side_v, msh_side, pval);
     M_un = M_un + mat_udotn_vdotn;
     M_pn = M_pn + op_u_v (sp_side_p, sp_side_p, msh_side, msh_side.charlen);
 end
 A = A + An;
 F = F + Fn;
 
-B1 = B0 - Bn;
-G1 = G0 - Gn;
 M_u = M_u + M_un;
 M_p = M_p + M_pn;
 
-
 p_dofs = 1:space_p.ndof;
-vel(drchlt_dofs) = vel_drchlt;
-int_dofs = setdiff (1:space_v.ndof, drchlt_dofs);
+vel(essntl_dofs) = vel_essntl;
+int_dofs = setdiff (1:space_v.ndof, essntl_dofs);
 nintdofs = numel (int_dofs);
-if ~isempty(drchlt_dofs)
-    if symmetric
-        rhs_dir  = [-A(int_dofs, drchlt_dofs); ...
-           B1(p_dofs, drchlt_dofs)]*vel(drchlt_dofs);
-    else
-        rhs_dir  = [-A(int_dofs, drchlt_dofs); ...
-           B0(p_dofs, drchlt_dofs)]*vel(drchlt_dofs);
-    end
+if ~isempty(essntl_dofs)
+    rhs_dir  = [-A(int_dofs, essntl_dofs); ...
+        -B0(p_dofs, essntl_dofs)]*vel(essntl_dofs);
 end
 
 % assemble the final matrix
-if symmetric
-    mat = [ A(int_dofs, int_dofs), -B1(:,int_dofs).';
-        -B1(:,int_dofs),  sparse(size (B1,1), size (B1,1))];
-    rhs = [F(int_dofs) - rhs_nmnn(int_dofs);
-        -G1 ];
-else
-    mat = [ A(int_dofs, int_dofs), -B1(:,int_dofs).';
-        -B0(:,int_dofs),  sparse(size (B1,1), size (B1,1))];
-    rhs = [F(int_dofs) - rhs_nmnn(int_dofs);
-        -G0 ];
-end
 
-% add strong Dirichlet b.c.
-if ~isempty(drchlt_sides)
+% restrict to the right dofs
+Ar = A(int_dofs, int_dofs);
+B0r = B0(p_dofs,int_dofs);
+M_ur = M_u(int_dofs,int_dofs);
+M_pr = M_p(p_dofs,p_dofs);
+Er = E(p_dofs);
+
+Ar = 0.5*(Ar+Ar'); % symmetrize
+mat = [ Ar, B0r.';
+    B0r,  sparse(space_p.ndof, space_p.ndof)];
+rhs = [F(int_dofs) + rhs_ntrl(int_dofs);
+    G0 ];
+
+% add strong essential b.c.
+if ~isempty(essntl_sides)
    rhs = rhs + rhs_dir; 
 end
 
 % filter out constant pressures in the case of no natural b.c. 
-if isempty (nmnn_sides)
-   avg_pres_vec = [spalloc(1, nintdofs, 0), E(p_dofs)];
+if isempty (ntrl_sides)
+   avg_pres_vec = [spalloc(1, nintdofs, 0), Er];
    mat = [mat, avg_pres_vec'; ...
        avg_pres_vec, 0];
    rhs = [rhs; 0];
@@ -217,18 +216,12 @@ end
 % solve the linear system
 sol = mat \ rhs;
 vel(int_dofs) = sol(1:nintdofs);
-if isempty (nmnn_sides)
+if isempty (ntrl_sides)
     press = sol(1+nintdofs:end-1);
 else
     press = sol(1+nintdofs:end);
 end
 
-% restrict to the right dofs
-Ar = A(int_dofs, int_dofs);
-B0r = B0(p_dofs,int_dofs);
-B1r = B1(p_dofs,int_dofs);
-M_ur = M_u(int_dofs,int_dofs);
-M_pr = M_p(p_dofs,p_dofs);
 
 
 end

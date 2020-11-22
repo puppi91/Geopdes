@@ -50,6 +50,7 @@
 % Copyright (C) 2009, 2010, 2011 Carlo de Falco
 % Copyright (C) 2011, Andrea Bressan, Rafael Vazquez
 % Copyright (C) 2014, 2015  Rafael Vazquez
+% Copyright (C) 2020 Riccardo Puppi
 %
 %    This program is free software: you can redistribute it and/or modify
 %    it under the terms of the GNU General Public License as published by
@@ -102,8 +103,13 @@ elseif (msh.rdim == 3)
   fun_one = @(x, y, z) ones (size(x));
 end
 A = op_gradu_gradv_tp (space_v, space_v, msh, viscosity); 
+M_u = A;
 B = op_divv_q_tp (space_v, space_p, msh);
+M_p = op_u_v_tp (space_p, space_p, msh);
+G = op_f_v_tp (space_p, msh, divvelex);
 E = op_f_v_tp (space_p, msh, fun_one).';
+G0 = G;
+B0 = B;
 F = op_f_v_tp (space_v, msh, f);
 
 vel   = zeros (space_v.ndof, 1);
@@ -122,7 +128,6 @@ for iside = nmnn_sides
   else
     sp_side  = sp_eval_boundary_side (space_v, msh_side);
   end
-
   x = cell (msh_side.rdim, 1);
   for idim = 1:msh_side.rdim
     x{idim} = squeeze (msh_side.geo_map(idim,:,:));
@@ -131,47 +136,136 @@ for iside = nmnn_sides
 
   rhs_nmnn(sp_side.dofs) = rhs_nmnn(sp_side.dofs) + op_f_v (sp_side, msh_side, gval);
 end
+F = F + rhs_nmnn;
 
-% Apply Dirichlet  boundary conditions. For RT and NDL elements the normal
+% Apply essential boundary conditions in a weak sense
+An = spalloc (space_v.ndof, space_v.ndof, 3*space_v.ndof);
+Bn = spalloc (space_p.ndof, space_v.ndof, 3*space_v.ndof);
+Fn = spalloc (space_v.ndof, 1, space_v.ndof);
+Gn = spalloc (space_p.ndof, 1, space_p.ndof);
+M_un = spalloc (space_v.ndof, space_v.ndof, 3*space_v.ndof);
+M_pn = spalloc (space_p.ndof, space_p.ndof, 3*space_p.ndof);
+for iside = weak_drchlt_sides
+    msh_side = msh_eval_boundary_side (msh, iside);
+    msh_side_from_interior = msh_boundary_side_from_interior (msh, iside);
+    sp_side_v = space_v.constructor (msh_side_from_interior);
+    sp_side_v = struct (sp_precompute (sp_side_v, msh_side_from_interior, 'value', true,'gradient',true));
+    sp_side_p = space_p.constructor (msh_side_from_interior);
+    sp_side_p = struct (sp_precompute (sp_side_p, msh_side_from_interior, 'value', true));
+    for idim = 1:msh.rdim
+        x{idim} = reshape (msh_side.geo_map(idim,:,:), msh_side.nqn, msh_side.nel);
+    end
+    coeff_at_qn = viscosity (x{:});
+    % assemble A_n, M_un, F_n
+    Bbd = op_gradv_n_u (sp_side_v, sp_side_v, msh_side, coeff_at_qn);
+    g_times_coeff = bsxfun (@times, h(x{:}, iside), ...
+        reshape(coeff_at_qn ,[1, msh_side.nqn, msh_side.nel]));
+    gradv_n_g = op_gradv_n_f (sp_side_v, msh_side, g_times_coeff);
+    coeff_at_qn =  coeff_at_qn * Cpen ./ msh_side.charlen;    
+    C = op_u_v (sp_side_v, sp_side_v, msh_side, coeff_at_qn);
+    g_times_coeff = bsxfun (@times, h(x{:}, iside), ...
+        reshape(coeff_at_qn ,[1, msh_side.nqn, msh_side.nel]));
+    g_cdot_v = op_f_v (sp_side_v, msh_side, g_times_coeff);
+    An = An + (Bbd + Bbd' - C);
+    M_un = M_un + op_u_v (sp_side_v, sp_side_v, msh_side, 1./msh_side.charlen);
+    Fn = Fn - gradv_n_g + g_cdot_v;
+    
+    % assemble B_n, M_qn, G_n
+    Bn = Bn + op_q_v_n(sp_side_v, sp_side_p, msh_side);
+    Gn = Gn + op_fdotn_v(sp_side_p, msh_side, h (x{:}, iside));
+    M_pn = M_pn + op_u_v(sp_side_p, sp_side_p, msh_side, msh_side.charlen);
+end
+A = A - An;
+F = F + Fn;
+B = B - Bn;
+if (~exist ('symmetric', 'var'))
+    symmetric = true;
+end
+if symmetric
+    G = G - Gn;
+end
+M_u = M_u + M_un;
+M_p = M_p + M_pn; 
+
+
+% Apply essential  boundary conditions in a strong sense. For RT and NDL elements the normal
 %  component is imposed strongly, and the tangential one is imposed weakly.
 if (strcmpi (element_name, 'RT') || strcmpi (element_name, 'NDL'))
-  [N_mat, N_rhs] = ...
-    sp_weak_drchlt_bc (space_v, msh, drchlt_sides, h, viscosity, Cpen);
+  [A_mat_wD, A_rhs_wD, M_u_add] = ...
+      my_sp_weak_drchlt_bc_stokes (space_v, msh, drchlt_sides, h, viscosity, Cpen);
+  A = A - A_mat_wD;
+  F = F + A_rhs_wD;
+  M_u = M_u + M_u_add;
   [vel_drchlt, drchlt_dofs] = sp_drchlt_l2_proj_udotn (space_v, msh, drchlt_sides, h);
 else
   [vel_drchlt, drchlt_dofs] = sp_drchlt_l2_proj (space_v, msh, h, drchlt_sides);
-  N_mat = sparse (space_v.ndof, space_v.ndof, 1);
-  N_rhs = zeros (space_v.ndof, 1);
 end
 
 vel(drchlt_dofs) = vel_drchlt;
 int_dofs = setdiff (1:space_v.ndof, drchlt_dofs);
 nintdofs = numel (int_dofs);
-rhs_dir  = -A(int_dofs, drchlt_dofs)*vel(drchlt_dofs) + N_mat(int_dofs,drchlt_dofs)*vel(drchlt_dofs);
 
-% Solve the linear system
-if (isempty (nmnn_sides))
-% If all the sides are Dirichlet, the pressure is zero averaged.
-  mat = [ A(int_dofs, int_dofs) - N_mat(int_dofs, int_dofs), -B(:,int_dofs).',              sparse(nintdofs, 1);
-         -B(:,int_dofs),                                     sparse(size (B,1), size(B,1)), E.';
-          sparse(1, nintdofs),                               E,                             0];
-  rhs = [F(int_dofs) + N_rhs(int_dofs) + rhs_dir; 
-         B(:, drchlt_dofs)*vel(drchlt_dofs);
-         0];
-
-  sol = mat \ rhs;
-  vel(int_dofs) = sol(1:nintdofs);
-  press = sol(1+nintdofs:end-1);
+if symmetric
+    rhs_dir  = [-A(int_dofs, drchlt_dofs);...
+        B(:, drchlt_dofs)] * vel(drchlt_dofs);
 else
-% With natural boundary condition, the constraint on the pressure is not needed.
-  mat = [ A(int_dofs, int_dofs) - N_mat(int_dofs, int_dofs), -B(:,int_dofs).';
-         -B(:,int_dofs),                                     sparse(size (B,1), size (B,1))];
-  rhs = [F(int_dofs) + N_rhs(int_dofs) + rhs_dir + rhs_nmnn(int_dofs);
-         B(:, drchlt_dofs)*vel(drchlt_dofs)];
+    rhs_dir  = [-A(int_dofs, drchlt_dofs); ...
+        B0(:, drchlt_dofs)] * vel(drchlt_dofs);
+end
 
-  sol = mat \ rhs;
-  vel(int_dofs) = sol(1:nintdofs);
-  press = sol(1+nintdofs:end);
+% assemble linear system
+Ar = A(int_dofs, int_dofs);
+Br = B(:, int_dofs);
+B0r = B0(:, int_dofs); % volumetric term
+
+M_ur = M_u(int_dofs, int_dofs);
+M_pr = M_p;
+
+if ~isempty(weak_drchlt_sides)
+    Bnr = Bn(:, int_dofs); % boundary term
+    Gnr = Gn;
+else
+    Bnr = zeros(size(Br));
+    Gnr = zeros(space_p.ndof,1);
+end
+Gr = G;
+G0r = G0;
+Fr = F(int_dofs);
+Er = E;
+
+Ar = 0.5*(Ar+Ar'); % symmetrize
+if(~symmetric)
+    mat = [ Ar, -Br.';
+        -B0r, spalloc(space_p.ndof, space_p.ndof, 0)];
+    rhs = [Fr;
+        -G0r];
+else
+    mat = [ Ar, -Br.';
+        -Br, spalloc(space_p.ndof, space_p.ndof, 0)];
+    rhs = [Fr;
+        -Gr];
+end
+
+% add strong essential b.c.
+if ~isempty(drchlt_sides)
+    rhs = rhs + rhs_dir;
+end
+
+% filter out constant pressures in the case of no natural b.c. 
+if isempty(nmnn_sides) 
+    avg_pres_vec = [spalloc(1, nintdofs, 0), Er];
+    mat = [mat, avg_pres_vec'; ...
+        avg_pres_vec, 0];
+    rhs = [rhs; 0];
+end
+
+% solve the linear system
+sol = mat \ rhs;
+vel(int_dofs) = sol(1:nintdofs);
+if ~isempty(nmnn_sides)
+    press = sol(1+nintdofs : end);
+else
+    press= sol(1+nintdofs :end-1);
 end
 
 end
