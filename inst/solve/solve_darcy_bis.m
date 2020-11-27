@@ -113,7 +113,7 @@ A = op_u_v_tp (space_v, space_v, msh, permeability);
 B0 = op_divv_q_tp (space_v, space_p, msh);
 E = op_f_v_tp (space_p, msh, fun_one).';
 F = op_f_v_tp (space_v, msh, f);
-G0 = op_f_v_tp (space_p, msh, g);
+G0 = op_f_v_tp (space_p, msh, divvelex);
 % matrix inducing scalar product for pressures
 M_p = op_u_v_tp (space_p, space_p, msh);
 % matrix inducing scalar product for velocities

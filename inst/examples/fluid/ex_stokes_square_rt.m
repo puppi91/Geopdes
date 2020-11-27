@@ -9,9 +9,9 @@ clear problem_data
 problem_data.geo_name = nrb4surf([0,0], [1,0], [0,1], [1,2]);
 
 % Type of boundary conditions for each side of the domain
-problem_data.drchlt_sides = [];
-problem_data.nmnn_sides = [1];
-problem_data.weak_drchlt_sides = [2:4];
+problem_data.drchlt_sides = [1:4];
+problem_data.nmnn_sides = [];
+problem_data.weak_drchlt_sides = [];
 
 % Physical parameters
 problem_data.viscosity = @(x, y) ones (size (x));
