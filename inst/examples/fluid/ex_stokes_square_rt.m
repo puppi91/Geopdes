@@ -60,7 +60,7 @@ factor = 10;
 method_data.Cpen = factor*(min(method_data.degree)+1);
 
 % 3) CALL TO THE SOLVER
-[geometry, msh, space_v, vel, space_p, press] = ...
+[geometry, msh, space_v, vel, space_p, press, cond_numb(i)] = ...
                        solve_stokes (problem_data, method_data);
 
 % 4) POST-PROCESSING

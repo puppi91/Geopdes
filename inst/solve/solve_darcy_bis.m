@@ -49,12 +49,13 @@
 %
 % OUTPUT:
 %
-%  geometry: geometry structure (see geo_load)
-%  msh:      mesh object that defines the quadrature rule (see msh_cartesian)
-%  space_v:  space object for the velocity (see sp_vector)
-%  vel:      the computed degrees of freedom for the velocity
-%  space_p:  space object for the pressure (see sp_scalar)
-%  press:    the computed degrees of freedom for the pressure
+%  geometry:  geometry structure (see geo_load)
+%  msh:       mesh object that defines the quadrature rule (see msh_cartesian)
+%  space_v:   space object for the velocity (see sp_vector)
+%  vel:       the computed degrees of freedom for the velocity
+%  space_p:   space object for the pressure (see sp_scalar)
+%  press:     the computed degrees of freedom for the pressure
+%  cond_numb: condition number
 %
 %
 % Copyright (C) 2020 Riccardo Puppi
@@ -72,7 +73,7 @@
 %    You should have received a copy of the GNU General Public License
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function [geometry, msh, space_v, vel, space_p, press, int_dofs, p_dofs, M_ur, M_pr, Ar, B0r] = ...
+function [geometry, msh, space_v, vel, space_p, press, int_dofs, p_dofs, M_ur, M_pr, Ar, B0r, cond_numb] = ...
                           solve_darcy_bis (problem_data, method_data)
 
 % Extract the fields from the data structures into local variables
@@ -90,7 +91,7 @@ geometry = geo_load (geo_name);
 
 % Compute the mesh structure using the finest mesh
 switch (upper(element_name))
-  case {'RT', 'TH', 'NDL'}
+  case {'RT', 'RT_FEM', 'TH', 'NDL'}
     [~, zeta] = kntrefine (geometry.nurbs.knots, nsub-1, degree, regularity);
   case {'SG'}
     [~, zeta] = kntrefine (geometry.nurbs.knots, 2*nsub-1, degree, regularity);
@@ -114,10 +115,49 @@ B0 = op_divv_q_tp (space_v, space_p, msh);
 E = op_f_v_tp (space_p, msh, fun_one).';
 F = op_f_v_tp (space_v, msh, f);
 G0 = op_f_v_tp (space_p, msh, divvelex);
+
+h_el = msh_evaluate_element_list(msh,1).element_size;
 % matrix inducing scalar product for pressures
-M_p = op_u_v_tp (space_p, space_p, msh);
+M_p = op_gradu_gradv_tp (space_p, space_p, msh);
+
+for ii = 1:msh.ndim
+    for jj = 1: numel(msh.breaks{ii})-2
+        [~, msh_left, msh_right] =  msh_on_internal_face (msh, ii, jj+1);
+        sp_left = space_p.constructor (msh_left);
+        sp_left = struct (sp_precompute (sp_left, msh_left));
+        sp_right = space_p.constructor (msh_right);
+        sp_right = struct (sp_precompute (sp_right, msh_right));
+        msh_face = msh_precompute(msh_left);  % choose one of the two
+        coeff = ones(msh_face.nqn, msh_face.nel);
+        sp_side_p.dofs = 1:sp_left.ndof; % choose one of the two
+        M_p(sp_side_p.dofs,sp_side_p.dofs) = M_p(sp_side_p.dofs,sp_side_p.dofs)...
+            + (h_el)^(-1)*(op_u_v (sp_left, sp_left, msh_face,coeff) - op_u_v (sp_left, sp_right, msh_face,coeff)...
+        - op_u_v (sp_right,sp_left, msh_face,coeff) + op_u_v (sp_right, sp_right, msh_face,coeff));     
+    end
+end
+
+for iside = weak_essntl_sides
+    msh_side = msh_eval_boundary_side (msh, iside);
+    sp_side_p = space_p.constructor (msh_side);
+    sp_side_p = struct (sp_precompute (sp_side_p, msh_side));
+    sp_side_p.dofs = 1:sp_side_p.ndof;
+    coeff = ones(msh_side.nqn, msh_side.nel);
+    M_p(sp_side_p.dofs,sp_side_p.dofs) =  M_p(sp_side_p.dofs,sp_side_p.dofs)...
+        +  (h_el)^(-1-method_data.degree(1))*op_u_v (sp_side_p, sp_side_p, msh_side,coeff);
+end
+
 % matrix inducing scalar product for velocities
-M_u = op_u_v_tp (space_v, space_v, msh) + op_divu_divv_tp (space_v, space_v, msh); 
+M_u = op_u_v_tp (space_v, space_v, msh); 
+for iside = weak_essntl_sides
+    msh_side = msh_eval_boundary_side (msh, iside);
+    msh_side_from_interior = msh_boundary_side_from_interior (msh, iside);
+    sp_side_v = space_v.constructor (msh_side_from_interior);
+    sp_side_v = struct (sp_precompute (sp_side_v, msh_side_from_interior, 'value', true));
+    sp_side_v.dofs = 1:sp_side_v.ndof;
+    coeff = ones(msh_side.nqn, msh_side.nel);
+    M_u(sp_side_v.dofs,sp_side_v.dofs) =  M_u(sp_side_v.dofs,sp_side_v.dofs)...
+        +  (h_el)^(-1-method_data.degree(1))*op_udotn_vdotn (sp_side_v, sp_side_v, msh_side,coeff); 
+end
 
 vel   = zeros (space_v.ndof, 1);
 press = zeros (space_p.ndof, 1);
@@ -139,7 +179,7 @@ for iside = ntrl_sides
 end
 
 % Apply essential boundary conditions in a strong sense
-if (strcmpi (element_name, 'RT') || strcmpi (element_name, 'NDL'))
+if (strcmpi (element_name, 'RT') || (strcmpi (element_name, 'RT_FEM')) || strcmpi (element_name, 'NDL'))
   [vel_essntl, essntl_dofs] = sp_drchlt_l2_proj_udotn (space_v, msh, essntl_sides, velex);
   else
   [vel_essntl, essntl_dofs] = sp_drchlt_l2_proj (space_v, msh, u_N, essntl_sides);
@@ -222,7 +262,8 @@ else
     press = sol(1+nintdofs:end);
 end
 
-
+% condition number global matrix
+cond_numb = condest(mat);
 
 end
 

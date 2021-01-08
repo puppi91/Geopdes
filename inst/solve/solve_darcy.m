@@ -53,13 +53,13 @@
 %
 % OUTPUT:
 %
-%  geometry: geometry structure (see geo_load)
-%  msh:      mesh object that defines the quadrature rule (see msh_cartesian)
-%  space_v:  space object for the velocity (see sp_vector)
-%  vel:      the computed degrees of freedom for the velocity
-%  space_p:  space object for the pressure (see sp_scalar)
-%  press:    the computed degrees of freedom for the pressure
-%
+%  geometry:  geometry structure (see geo_load)
+%  msh:       mesh object that defines the quadrature rule (see msh_cartesian)
+%  space_v:   space object for the velocity (see sp_vector)
+%  vel:       the computed degrees of freedom for the velocity
+%  space_p:   space object for the pressure (see sp_scalar)
+%  press:     the computed degrees of freedom for the pressure
+%  cond_numb: condition number
 %
 % Copyright (C) 2020 Riccardo Puppi
 %
@@ -76,7 +76,8 @@
 %    You should have received a copy of the GNU General Public License
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function [geometry, msh, space_v, vel, space_p, press, int_dofs, p_dofs, M_ur, M_pr, Ar, B0r, Br] = ...
+function [geometry, msh, space_v, vel, space_p, press, int_dofs, p_dofs,...
+    M_ur, M_pr, Ar, B0r, Br, cond_numb] = ...
                           solve_darcy (problem_data, method_data)
 
 % Extract the fields from the data structures into local variables
@@ -94,7 +95,7 @@ geometry = geo_load (geo_name);
 
 % Compute the mesh structure using the finest mesh
 switch (upper(element_name))
-  case {'RT', 'TH', 'NDL'}
+  case {'RT', 'RT_FEM', 'TH', 'NDL'}
     [~, zeta] = kntrefine (geometry.nurbs.knots, nsub-1, degree, regularity);
   case {'SG'}
     [~, zeta] = kntrefine (geometry.nurbs.knots, 2*nsub-1, degree, regularity);
@@ -114,16 +115,34 @@ elseif (msh.rdim == 3)
   fun_one = @(x, y, z) ones (size(x));
 end
 A = op_u_v_tp (space_v, space_v, msh, permeability); 
+M_u = A;
 B = op_divv_q_tp (space_v, space_p, msh);
 E = op_f_v_tp (space_p, msh, fun_one).';
 F = op_f_v_tp (space_v, msh, f);
 G = op_f_v_tp (space_p, msh, divvelex);
 G0 = G;
 B0 = B;
+
+h_el = msh_evaluate_element_list(msh,1).element_size;
+p = space_p.degree(1);
 % matrix inducing scalar product for pressures
-M_p = op_u_v_tp (space_p, space_p, msh);
-% matrix inducing scalar product for velocities
-M_u = op_u_v_tp (space_v, space_v, msh) + op_divu_divv_tp (space_v, space_v, msh); 
+M_p = op_gradu_gradv_tp (space_p, space_p, msh);
+% adding jumps' contribution
+for ii = 1:msh.ndim
+    for jj = 1: numel(msh.breaks{ii})-2
+        [~, msh_left, msh_right] =  msh_on_internal_face (msh, ii, jj+1);
+        sp_left = space_p.constructor (msh_left);
+        sp_left = struct (sp_precompute (sp_left, msh_left));
+        sp_right = space_p.constructor (msh_right);
+        sp_right = struct (sp_precompute (sp_right, msh_right));
+        msh_face = msh_precompute(msh_left);  % choose one of the two
+        coeff = ones(msh_face.nqn, msh_face.nel);
+        sp_side_p.dofs = 1:sp_left.ndof; % choose one of the two
+        M_p(sp_side_p.dofs,sp_side_p.dofs) = M_p(sp_side_p.dofs,sp_side_p.dofs)...
+            + (h_el)^(-1)*(op_u_v (sp_left, sp_left, msh_face,coeff) - op_u_v (sp_left, sp_right, msh_face,coeff)...
+        - op_u_v (sp_right,sp_left, msh_face,coeff) + op_u_v (sp_right, sp_right, msh_face,coeff));     
+    end
+end
 
 vel   = zeros (space_v.ndof, 1);
 press = zeros (space_p.ndof, 1);
@@ -132,7 +151,7 @@ press = zeros (space_p.ndof, 1);
 rhs_ntrl = zeros(space_v.ndof,1);
 for iside = ntrl_sides
     msh_side = msh_eval_boundary_side (msh, iside);
-    if (strcmpi (element_name, 'RT'))
+    if (strcmpi (element_name, 'RT')) || (strcmpi (element_name, 'RT_FEM'))
         msh_side_from_interior = msh_boundary_side_from_interior (msh, iside);
         sp_side_v = space_v.constructor (msh_side_from_interior);
         sp_side_v = struct (sp_precompute (sp_side_v, msh_side_from_interior, 'value', true));
@@ -166,17 +185,24 @@ for iside = weak_essntl_sides
         x{idim} = reshape (msh_side.geo_map(idim,:,:), msh_side.nqn, msh_side.nel);
     end
     mat_udotn_vdotn = op_udotn_vdotn (sp_side_v, sp_side_v, msh_side, ones(msh_side.nqn, msh_side.nel));
-    An = An + Cpen*mat_udotn_vdotn;
-    Bn = Bn + op_q_v_n (sp_side_v, sp_side_p, msh_side);
     vel_times_coeff = bsxfun (@times, velex(x{:}, iside), ones(msh_side.rdim, msh_side.nqn, msh_side.nel));
-    Fn = Fn + Cpen*op_fdotn_vdotn (sp_side_v, msh_side, vel_times_coeff);
-    Gn = Gn + op_fdotn_v (sp_side_p, msh_side, velex(x{:}, iside));
-    M_un = M_un + mat_udotn_vdotn;
-    M_pn = M_pn + op_u_v (sp_side_p, sp_side_p, msh_side, msh_side.charlen);
+    if solver==1
+        An = An + (h_el^(-1))*mat_udotn_vdotn;
+        Bn = Bn + op_q_v_n (sp_side_v, sp_side_p, msh_side);
+        Fn = Fn + (h_el^(-1))*op_fdotn_vdotn (sp_side_v, msh_side, vel_times_coeff);
+        Gn = Gn + op_fdotn_v (sp_side_p, msh_side, velex(x{:}, iside));
+        M_un = M_un + (h_el^(-1))*mat_udotn_vdotn;
+    elseif solver==2
+        An = An + (h_el^(-p-1))*mat_udotn_vdotn;
+        Fn = Fn + (h_el^(-p-1))*op_fdotn_vdotn (sp_side_v, msh_side, vel_times_coeff)...
+             +(~isempty(ntrl_sides))*op_f_vdotn(sp_side_v, msh_side, pressex(x{:}));
+        M_un = M_un + (h_el^(-p-1))*mat_udotn_vdotn;
+        M_pn = M_pn + (h_el^(-1))*op_u_v (sp_side_p, sp_side_p, msh_side, msh_side.charlen);
+    end
 end
 A = A + An;
 F = F + Fn;
-B = B0 - Bn;
+B = B - Bn;
 if (~exist('symmetric','var'))
     symmetric = true;
 end
@@ -188,7 +214,7 @@ M_p = M_p + M_pn;
 
 
 % Apply essential boundary conditions in a strong sense
-if (strcmpi (element_name, 'RT') || strcmpi (element_name, 'NDL'))
+if (strcmpi (element_name, 'RT') || (strcmpi (element_name, 'RT_FEM')) || strcmpi (element_name, 'NDL'))
   [vel_essntl, essntl_dofs] = sp_drchlt_l2_proj_udotn (space_v, msh, essntl_sides, velex);
   else
   [vel_essntl, essntl_dofs] = sp_drchlt_l2_proj (space_v, msh, u_N, essntl_sides);
@@ -262,6 +288,9 @@ else
     press= sol(1+nintdofs :end-1);
 end
 
+% condition number global matrix
+cond_numb = condest(mat);
+% err = sp_error_press_darcy (space_p, msh, press, pressex, gradpressex, weak_essntl_sides)
 
 end
 

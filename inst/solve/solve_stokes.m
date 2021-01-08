@@ -65,7 +65,7 @@
 %    You should have received a copy of the GNU General Public License
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function [geometry, msh, space_v, vel, space_p, press] = ...
+function [geometry, msh, space_v, vel, space_p, press, drchlt_dofs] = ...
                           solve_stokes (problem_data, method_data)
 
 % Extract the fields from the data structures into local variables

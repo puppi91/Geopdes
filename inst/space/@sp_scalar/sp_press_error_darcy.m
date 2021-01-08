@@ -1,7 +1,6 @@
-% SP_L2_ERROR_NITSCHE: Evaluate the error in the Nische norm scaling as the L^2
-% error
+% SP_ERROR_PRESS_DARCY: Evaluate the error in the Nitsche norm scaling as the H^1 error.
 %
-%   [errl2, varargout] = sp_l2_error_nitsche (space, msh, u, uex, varargin)
+%   [errl2, varargout] = sp_error_nitsche (space, msh, u, uex, varargin)
 %
 % INPUT:
 %
@@ -32,7 +31,7 @@
 % along with Octave; see the file COPYING.  If not, see
 % <http://www.gnu.org/licenses/>.
 
-function [errl2, varargout] = sp_l2_error_nitsche (space, msh, u, uex,varargin)
+function [errl2, varargout] = sp_press_error_darcy (space, msh, u, uex,varargin)
 
 errl2 = 0;
 

@@ -34,6 +34,7 @@
 %
 % Copyright (C) 2009, 2010, 2011 Carlo de Falco
 % Copyright (C) 2011, 2015 Rafael Vazquez
+% Copyright (C) 2020 Riccardo Puppi
 %
 %    This program is free software: you can redistribute it and/or modify
 %    it under the terms of the GNU General Public License as published by
@@ -119,6 +120,24 @@ switch (lower (element_name))
 
     [knotsp, degp] = knt_derham (knots_h1, degree_h1, 'L2');
     spp = sp_bspline (knotsp, degp, msh, 'integral-preserving');
+    
+    case {'rt_fem'}
+        % In this case the regularity is assigned first in the velocity space
+        degree_h1 = degree_p + 1;
+        regularity_h1 = regularity_p + 1;
+        knots_h1 = kntrefine (knots, nsub_p-1, degree_h1, regularity_h1);
+        
+        [knots_v, degree_v] = knt_derham (knots_h1, degree_h1, 'Hdiv');
+        for idim = 1:msh.ndim
+            scalar_spaces{idim} = sp_bspline (knots_v{idim}, degree_v{idim}, msh);
+        end
+        spv = sp_vector (scalar_spaces, msh, 'div-preserving');
+        clear scalar_spaces
+        
+        [knotsp, degp] = knt_derham (knots_h1, degree_h1, 'L2');
+        spp = sp_bspline (knotsp, degp, msh, 'grad-preserving');
+    
+    
 
 %     if (nargout == 3)
 %       PI = b2nst__ (spp, knotsp, degree_p, msh);
