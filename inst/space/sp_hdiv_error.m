@@ -1,6 +1,6 @@
 % SP_HDIV_ERROR: Evaluate the error in H(div) norm.
 %
-%   [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem] = sp_hdiv_error (space, msh, u, uex, divuex, varargin);
+%   [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem] = sp_hdiv_error (space, msh, u, uex, divuex);
 %
 % INPUT:
 %
@@ -33,7 +33,7 @@
 %
 % You should have received a copy of the GNU General Public License
 % along with Octave; see the file COPYING.  If not, see
-% <http://www.gnu.org/licenses/>.function [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem, varargout] = sp_hdiv_error (sp, msh, u, uex, divuex, varargin)
+% <http://www.gnu.org/licenses/>.function [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem] = sp_hdiv_error (sp, msh, u, uex, divuex)
 
 function [errhdiv, errl2, errhdivs, errhdiv_elem, errl2_elem, errhdivs_elem] = sp_hdiv_error(sp, msh, u, uex, divuex)
 

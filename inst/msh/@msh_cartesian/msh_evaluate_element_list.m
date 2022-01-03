@@ -49,6 +49,29 @@
 
 function msh_col = msh_evaluate_element_list (msh, elem_list, varargin)
 
+% --------------------added by riccardo-------------------
+if (nargin <= 2)
+    normal = false;
+    idir = 1;
+else
+    if (~rem (length (varargin), 2) == 0)
+        error ('msh_evaluate_element_list: options must be passed in the [option, value] format');
+    end
+    normal = false;
+    for ii=1:2:length(varargin)-1
+        if (strcmpi (varargin{ii}, 'normal'))
+            normal = varargin{ii+1};
+        elseif (strcmpi (varargin{ii}, 'idir'))
+            idir = varargin{ii+1};
+        else
+            error ('msh_evaluate_element_list: unknown option %s', varargin {ii});
+        end
+    end
+end
+% --------------------------------------------------------
+    
+
+
   elem_list = elem_list(:)';
 
   msh_col.ndim = msh.ndim;
@@ -126,11 +149,29 @@ function msh_col = msh_evaluate_element_list (msh, elem_list, varargin)
                              abs (msh_col.jacdet), 1)).^(1/msh.ndim);
   end
   
-  if (msh.ndim == 2 && msh.rdim == 3)
+  if (msh.ndim == 2 && msh.rdim == 3) 
     normal = reshape (geopdes_cross__ (msh_col.geo_map_jac(:,1,:,:), ...
                               msh_col.geo_map_jac(:,2,:,:)), msh_col.rdim, msh_col.nqn, msh_col.nel);
     norms = reshape (geopdes_norm__ (normal), [1, msh_col.nqn, msh_col.nel]);
     msh_col.normal = bsxfun (@rdivide, normal, norms);
   end
+   
+% --------------------added by riccardo-------------------
+  if normal
+      JinvT = geopdes_invT__ (msh_col.geo_map_jac);
+      JinvT = reshape (JinvT, [msh.rdim, msh.ndim, msh_col.nqn, msh_col.nel]);
+      
+      normal = zeros (msh.ndim, msh_col.nqn, 1, msh_col.nel);
+      if msh_col.nel_dir
+          normal(idir,:) = -1;
+          normal = geopdes_prod__ (JinvT, normal);
+          normal = reshape (normal, [msh.rdim, msh_col.nqn, msh_col.nel]);
+          % normalize
+          norms = reshape (geopdes_norm__ (normal), [1, msh_col.nqn, msh_col.nel]);
+          msh_col.normal = bsxfun (@rdivide, normal, norms);
+      end
+ end
+% ---------------------------------------------------------
 
-end
+      
+  

@@ -164,5 +164,7 @@ function msh = msh_precompute (msh, varargin)
     msh.element_size = (sum (msh.quad_weights .* ...
                              abs (msh.jacdet), 1)).^(1/msh.ndim);
   end
+  
+  
 
 end

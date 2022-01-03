@@ -95,11 +95,10 @@ geometry = geo_load (geo_name);
 
 % Compute the mesh structure using the finest mesh
 switch (upper(element_name))
-  case {'RT', 'RT_FEM', 'TH', 'NDL'}
+  case {'RT_FEM'}
     [~, zeta] = kntrefine (geometry.nurbs.knots, nsub-1, degree, regularity);
-  case {'SG'}
-    [~, zeta] = kntrefine (geometry.nurbs.knots, 2*nsub-1, degree, regularity);
 end
+% Construct msh structure
 rule       = msh_gauss_nodes (nquad);
 [qn, qw]   = msh_set_quad_nodes (zeta, rule);
 msh        = msh_cartesian (zeta, qn, qw, geometry);
@@ -116,33 +115,45 @@ elseif (msh.rdim == 3)
 end
 A = op_u_v_tp (space_v, space_v, msh, permeability); 
 M_u = A;
-B = op_divv_q_tp (space_v, space_p, msh);
+B = op_divv_p_tp (space_v, space_p, msh);
 E = op_f_v_tp (space_p, msh, fun_one).';
 F = op_f_v_tp (space_v, msh, f);
 G = op_f_v_tp (space_p, msh, divvelex);
 G0 = G;
 B0 = B;
 
-h_el = msh_evaluate_element_list(msh,1).element_size;
+h_el = sqrt(msh_evaluate_element_list(msh,1).element_size);
 p = space_p.degree(1);
 % matrix inducing scalar product for pressures
 M_p = op_gradu_gradv_tp (space_p, space_p, msh);
+M_p_jump = zeros(size(M_p));
+B_jump = zeros(size(B));
 % adding jumps' contribution
 for ii = 1:msh.ndim
     for jj = 1: numel(msh.breaks{ii})-2
         [~, msh_left, msh_right] =  msh_on_internal_face (msh, ii, jj+1);
-        sp_left = space_p.constructor (msh_left);
-        sp_left = struct (sp_precompute (sp_left, msh_left));
-        sp_right = space_p.constructor (msh_right);
-        sp_right = struct (sp_precompute (sp_right, msh_right));
-        msh_face = msh_precompute(msh_left);  % choose one of the two
+        sp_left_p = space_p.constructor (msh_left);
+        sp_left_p = struct (sp_precompute (sp_left_p, msh_left));
+        sp_right_p = space_p.constructor (msh_right);
+        sp_right_p = struct (sp_precompute (sp_right_p, msh_right));
+        sp_left_v = space_v.constructor (msh_left);
+        sp_left_v = struct (sp_precompute (sp_left_v, msh_left));
+       % msh_face = msh_precompute(msh_left);  % choose one of the two
+        msh_face = msh_evaluate_element_list(msh_left, 1:msh_left.nel, 'normal', true, 'idir',ii);
         coeff = ones(msh_face.nqn, msh_face.nel);
-        sp_side_p.dofs = 1:sp_left.ndof; % choose one of the two
-        M_p(sp_side_p.dofs,sp_side_p.dofs) = M_p(sp_side_p.dofs,sp_side_p.dofs)...
-            + (h_el)^(-1)*(op_u_v (sp_left, sp_left, msh_face,coeff) - op_u_v (sp_left, sp_right, msh_face,coeff)...
-        - op_u_v (sp_right,sp_left, msh_face,coeff) + op_u_v (sp_right, sp_right, msh_face,coeff));     
+        sp_side_p.dofs = 1:sp_left_p.ndof; % choose one of the two
+        sp_side_v.dofs = 1:sp_left_v.ndof; % choose one of the two
+        M_p_jump(sp_side_p.dofs,sp_side_p.dofs)  = M_p_jump(sp_side_p.dofs,sp_side_p.dofs)  + ...
+            + (h_el)^(-1)*(op_u_v (sp_left_p, sp_left_p, msh_face,coeff)...
+            - op_u_v (sp_left_p, sp_right_p, msh_face,coeff)...
+        - op_u_v (sp_right_p,sp_left_p, msh_face,coeff) + op_u_v (sp_right_p, sp_right_p, msh_face,coeff));
+        B_jump(sp_side_p.dofs,sp_side_v.dofs)  = B_jump(sp_side_p.dofs,sp_side_v.dofs)  + ...
+            - op_p_vdotn (sp_left_v, sp_left_p, msh_face)...
+            + op_p_vdotn (sp_left_v, sp_right_p, msh_face);
     end
 end
+M_p = M_p + M_p_jump;
+
 
 vel   = zeros (space_v.ndof, 1);
 press = zeros (space_p.ndof, 1);
@@ -151,7 +162,7 @@ press = zeros (space_p.ndof, 1);
 rhs_ntrl = zeros(space_v.ndof,1);
 for iside = ntrl_sides
     msh_side = msh_eval_boundary_side (msh, iside);
-    if (strcmpi (element_name, 'RT')) || (strcmpi (element_name, 'RT_FEM'))
+    if (strcmpi (element_name, 'RT_FEM'))
         msh_side_from_interior = msh_boundary_side_from_interior (msh, iside);
         sp_side_v = space_v.constructor (msh_side_from_interior);
         sp_side_v = struct (sp_precompute (sp_side_v, msh_side_from_interior, 'value', true));
@@ -187,16 +198,16 @@ for iside = weak_essntl_sides
     mat_udotn_vdotn = op_udotn_vdotn (sp_side_v, sp_side_v, msh_side, ones(msh_side.nqn, msh_side.nel));
     vel_times_coeff = bsxfun (@times, velex(x{:}, iside), ones(msh_side.rdim, msh_side.nqn, msh_side.nel));
     if solver==1
-        An = An + (h_el^(-1))*mat_udotn_vdotn;
-        Bn = Bn + op_q_v_n (sp_side_v, sp_side_p, msh_side);
-        Fn = Fn + (h_el^(-1))*op_fdotn_vdotn (sp_side_v, msh_side, vel_times_coeff);
+        An = An + Cpen*(h_el^(-1))*mat_udotn_vdotn;
+        Bn = Bn + op_p_vdotn (sp_side_v, sp_side_p, msh_side);
+        Fn = Fn + Cpen*(h_el^(-1))*op_fdotn_vdotn (sp_side_v, msh_side, velex(x{:}, iside));
         Gn = Gn + op_fdotn_v (sp_side_p, msh_side, velex(x{:}, iside));
-        M_un = M_un + (h_el^(-1))*mat_udotn_vdotn;
+        M_un = M_un + Cpen*(h_el^(-1))*mat_udotn_vdotn;
     elseif solver==2
-        An = An + (h_el^(-p-1))*mat_udotn_vdotn;
-        Fn = Fn + (h_el^(-p-1))*op_fdotn_vdotn (sp_side_v, msh_side, vel_times_coeff)...
+        An = An + Cpen*(h_el^(-p-1))*mat_udotn_vdotn;
+        Fn = Fn + Cpen*(h_el^(-p-1))*op_fdotn_vdotn (sp_side_v, msh_side,  velex(x{:}, iside));%...
              +(~isempty(ntrl_sides))*op_f_vdotn(sp_side_v, msh_side, pressex(x{:}));
-        M_un = M_un + (h_el^(-p-1))*mat_udotn_vdotn;
+        M_un = M_un + Cpen*(h_el^(-p-1))*mat_udotn_vdotn;
         M_pn = M_pn + (h_el^(-1))*op_u_v (sp_side_p, sp_side_p, msh_side, msh_side.charlen);
     end
 end
@@ -213,11 +224,38 @@ M_u = M_u + M_un;
 M_p = M_p + M_pn;
 
 
+%------------------------------DEBUGGING----------------------------------
+% non_trimmed_elem_ids = 1:msh.nel;
+% trimmed_elems = {};
+% B_jump_bis = op_vdotn_qjump_trimming_bis (space_v,space_p, msh, non_trimmed_elem_ids, trimmed_elems);
+% max(max(abs(B_jump - B_jump_bis)))
+% 
+% M_p_jump_bis = h_el^(-1)*op_ujump_vjump_trimming_bis (space_p, msh, non_trimmed_elem_ids, trimmed_elems);
+% max(max(abs(M_p_jump - M_p_jump_bis)))
+
+% fprintf('----------------check i.b.p----------------');
+% B_grad = op_v_gradp_tp (space_v, space_p, msh);
+% B_tilde = -B_grad + B_jump;
+% max(max(abs(B-B_tilde)))
+% 
+% % check that jumps are zero when pressures are continuous
+% fprintf('----------------check pressures jumps----------------');
+% max(max(abs(M_p_jump)))
+% max(max(abs(B_jump)))
+
+%--------------------------------------------------------------------------
+
+
 % Apply essential boundary conditions in a strong sense
-if (strcmpi (element_name, 'RT') || (strcmpi (element_name, 'RT_FEM')) || strcmpi (element_name, 'NDL'))
-  [vel_essntl, essntl_dofs] = sp_drchlt_l2_proj_udotn (space_v, msh, essntl_sides, velex);
-  else
-  [vel_essntl, essntl_dofs] = sp_drchlt_l2_proj (space_v, msh, u_N, essntl_sides);
+if ~isempty(essntl_sides)
+    if (strcmpi (element_name, 'RT_FEM'))
+        [vel_essntl, essntl_dofs] = sp_drchlt_l2_proj_udotn (space_v, msh, essntl_sides, velex);
+    else
+        [vel_essntl, essntl_dofs] = sp_drchlt_l2_proj (space_v, msh, u_N, essntl_sides);
+    end
+else
+    vel_essntl = [];
+    essntl_dofs = [];
 end
 
 p_dofs = 1:space_p.ndof;
@@ -241,7 +279,9 @@ B0r = B0(:,int_dofs);
 Br = B(:,int_dofs);
 M_ur = M_u(int_dofs,int_dofs);
 M_pr = M_p;
-if~isempty(weak_essntl_sides)
+
+% useful just for the output
+if ~isempty(weak_essntl_sides)
    Bnr = Bn(:, int_dofs);
    Gnr = Gn;
 else
@@ -272,12 +312,33 @@ if ~isempty(essntl_sides)
 end
 
 % filter out constant pressures in the case of no natural b.c. 
-if isempty (ntrl_sides)
-   avg_pres_vec = [spalloc(1, nintdofs, 0), Er];
-   mat = [mat, avg_pres_vec'; ...
-       avg_pres_vec, 0];
-   rhs = [rhs; 0];
+% if isempty (ntrl_sides)
+%    avg_pres_vec = [spalloc(1, nintdofs, 0), Er];
+%    mat = [mat, avg_pres_vec'; ...
+%        avg_pres_vec, 0];
+%    rhs = [rhs; 0];
+% end
+
+if isempty (ntrl_sides) && isempty(essntl_sides)
+    K = spalloc(space_v.ndof,space_v.ndof,3*space_v.ndof);
+    for i = 1 : weak_essntl_sides
+        msh_side = msh_eval_boundary_side (msh, i);
+        msh_side_from_interior = msh_boundary_side_from_interior (msh, i);
+        sp_side_v = space_v.constructor (msh_side_from_interior);
+        sp_side_v = struct (sp_precompute (sp_side_v, msh_side_from_interior, 'value', true));
+        sp_side_v.dofs = 1:sp_side_v.ndof;
+        K = K + op_f_vdotn (sp_side_v, msh_side, ones(msh_side.nqn, msh_side.nel)).';
+    end
+    Kr = K(int_dofs, int_dofs);
+    matmult = [spalloc(1,nintdofs,0), Er ; Kr, spalloc(nintdofs,space_p.ndof,0)];
+    mat = [mat, matmult'; matmult, spalloc(1+nintdofs, 1+nintdofs,0)];
+    rhs = [rhs; 0 ; spalloc(nintdofs,1,0)];
 end
+
+
+% if isempty (ntr_sides) && isempty (essntl_sides)
+%     
+% end
 
 % solve the linear system
 sol = mat \ rhs;
@@ -285,7 +346,9 @@ vel(int_dofs) = sol(1:nintdofs);
 if ~isempty(ntrl_sides)
     press = sol(1+nintdofs : end);
 else
-    press= sol(1+nintdofs :end-1);
+%     press= sol(1+nintdofs :end-1);
+    press= sol(1+nintdofs :end-(1+nintdofs));
+
 end
 
 % condition number global matrix

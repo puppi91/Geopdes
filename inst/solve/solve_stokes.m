@@ -95,7 +95,6 @@ msh        = msh_cartesian (zeta, qn, qw, geometry);
 % Compute the space structures
 [space_v, space_p] = sp_bspline_fluid (element_name, ...
                 geometry.nurbs.knots, nsub, degree, regularity, msh);
-
 % Assemble the matrices
 if (msh.rdim == 2)
   fun_one = @(x, y) ones (size(x));
@@ -159,19 +158,18 @@ for iside = weak_drchlt_sides
     % assemble A_n, M_un, F_n
     Bbd = op_gradv_n_u (sp_side_v, sp_side_v, msh_side, coeff_at_qn);
     g_times_coeff = bsxfun (@times, h(x{:}, iside), ...
-        reshape(coeff_at_qn ,[1, msh_side.nqn, msh_side.nel]));
+            reshape(coeff_at_qn ,[1, msh_side.nqn, msh_side.nel])); 
     gradv_n_g = op_gradv_n_f (sp_side_v, msh_side, g_times_coeff);
-    coeff_at_qn =  coeff_at_qn * Cpen ./ msh_side.charlen;    
+    coeff_at_qn =  coeff_at_qn * Cpen ./ msh_side.charlen;    % TODO see if this charlen is okay
     C = op_u_v (sp_side_v, sp_side_v, msh_side, coeff_at_qn);
     g_times_coeff = bsxfun (@times, h(x{:}, iside), ...
-        reshape(coeff_at_qn ,[1, msh_side.nqn, msh_side.nel]));
+            reshape(coeff_at_qn,[1, msh_side.nqn, msh_side.nel]));
     g_cdot_v = op_f_v (sp_side_v, msh_side, g_times_coeff);
     An = An + (Bbd + Bbd' - C);
     M_un = M_un + op_u_v (sp_side_v, sp_side_v, msh_side, 1./msh_side.charlen);
     Fn = Fn - gradv_n_g + g_cdot_v;
-    
     % assemble B_n, M_qn, G_n
-    Bn = Bn + op_q_v_n(sp_side_v, sp_side_p, msh_side);
+    Bn = Bn + op_p_vdotn(sp_side_v, sp_side_p, msh_side);
     Gn = Gn + op_fdotn_v(sp_side_p, msh_side, h (x{:}, iside));
     M_pn = M_pn + op_u_v(sp_side_p, sp_side_p, msh_side, msh_side.charlen);
 end
@@ -190,17 +188,21 @@ M_p = M_p + M_pn;
 
 % Apply essential  boundary conditions in a strong sense. For RT and NDL elements the normal
 %  component is imposed strongly, and the tangential one is imposed weakly.
-if (strcmpi (element_name, 'RT') || strcmpi (element_name, 'NDL'))
-  [A_mat_wD, A_rhs_wD, M_u_add] = ...
-      my_sp_weak_drchlt_bc_stokes (space_v, msh, drchlt_sides, h, viscosity, Cpen);
-  A = A - A_mat_wD;
-  F = F + A_rhs_wD;
-  M_u = M_u + M_u_add;
-  [vel_drchlt, drchlt_dofs] = sp_drchlt_l2_proj_udotn (space_v, msh, drchlt_sides, h);
+if ~isempty(drchlt_sides)
+    if (strcmpi (element_name, 'RT') || strcmpi (element_name, 'NDL'))
+        [A_mat_wD, A_rhs_wD, M_u_add] = ...
+            my_sp_weak_drchlt_bc_stokes (space_v, msh, drchlt_sides, h, viscosity, Cpen);
+        A = A - A_mat_wD;
+        F = F + A_rhs_wD;
+        M_u = M_u + M_u_add;
+        [vel_drchlt, drchlt_dofs] = sp_drchlt_l2_proj_udotn (space_v, msh, drchlt_sides, h);
+    else
+        [vel_drchlt, drchlt_dofs] = sp_drchlt_l2_proj (space_v, msh, h, drchlt_sides);
+    end
 else
-  [vel_drchlt, drchlt_dofs] = sp_drchlt_l2_proj (space_v, msh, h, drchlt_sides);
+    vel_drchlt = [];
+    drchlt_dofs = [];
 end
-
 vel(drchlt_dofs) = vel_drchlt;
 int_dofs = setdiff (1:space_v.ndof, drchlt_dofs);
 nintdofs = numel (int_dofs);

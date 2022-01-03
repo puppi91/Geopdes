@@ -35,7 +35,6 @@
 
 function [err, err_h1s, err_l2_jump, err_l2_bd, varargout] = sp_error_press_darcy (space, msh, u, uex, graduex, solver, bnd_sides)
 
-p = space.degree(1);
 % element size h
 msh_elem = msh_evaluate_element_list(msh, 1);
 h_el = msh_elem.element_size(1);

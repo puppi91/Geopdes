@@ -36,7 +36,7 @@
 function [err, err_l2, err_l2_bd] = sp_error_vel_darcy (space, msh, u, uex, bnd_sides, solver)
 
 
-p = space.scalar_spaces{1}.degree(1);
+p = space.scalar_spaces{1}.degree(2);
 
 % element size h
 msh_elem = msh_evaluate_element_list(msh, 1);

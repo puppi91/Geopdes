@@ -1,12 +1,12 @@
-% OP_DIVV_Q_TP: assemble the matrix B = [b(i,j)], b(i,j) = (q_i, div v_j), exploiting the tensor product structure.
+% OP_DIVV_P_TP: assemble the matrix B = [b(i,j)], b(i,j) = (p_i, div v_j), exploiting the tensor product structure.
 %
-%   mat = op_divv_q_tp (spv, spq, msh);
-%   [rows, cols, values] = op_divv_q_tp (spv, spq, msh);
+%   mat = op_divv_p_tp (spv, spq, msh);
+%   [rows, cols, values] = op_divv_p_tp (spv, spq, msh);
 %
 % INPUT: 
 %
 %   spv:     object representing the vector-valued space of trial functions for the velocity (see sp_vector)
-%   spq:     object representing the scalar-valued space of test functions for the pressure (see sp_scalar)
+%   spp:     object representing the scalar-valued space of test functions for the pressure (see sp_scalar)
 %   msh:     object that defines the domain partition and the quadrature rule (see msh_cartesian)
 %
 % OUTPUT: 
@@ -32,7 +32,7 @@
 %    You should have received a copy of the GNU General Public License
 %    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function varargout = op_divv_q_tp (spv, spq, msh)
+function varargout = op_divv_p_tp (spv, spq, msh)
 
   A = spalloc (spq.ndof, spv.ndof, 3*spv.ndof);
 
@@ -40,9 +40,9 @@ function varargout = op_divv_q_tp (spv, spq, msh)
     msh_col = msh_evaluate_col (msh, iel);
     spv_col = sp_evaluate_col (spv, msh_col, 'divergence', true, ...
 			       'value', false);
-    spq_col = sp_evaluate_col (spq, msh_col);
+    spp_col = sp_evaluate_col (spq, msh_col);
 
-    A = A + op_divv_q (spv_col, spq_col, msh_col);
+    A = A + op_divv_p (spv_col, spp_col, msh_col);
   end
 
   if (nargout == 1)

@@ -6,12 +6,12 @@ close all
 clear problem_data  
 % Physical domain, defined as NURBS map given in a text file
 % problem_data.geo_name = 'geo_square.txt';
-problem_data.geo_name = nrb4surf([0,0], [1,0], [0,1], [1,2]);
+problem_data.geo_name = nrb4surf([0,0], [1,0], [0,1], [1,2]); % it's a pentagon!
 
 % Type of boundary conditions for each side of the domain
-problem_data.drchlt_sides = [1:4];
 problem_data.nmnn_sides = [];
-problem_data.weak_drchlt_sides = [];
+problem_data.drchlt_sides = [];
+problem_data.weak_drchlt_sides = [1 2 3 4];
 
 % Physical parameters
 problem_data.viscosity = @(x, y) ones (size (x));
@@ -39,16 +39,16 @@ problem_data.velex = @(x, y) cat(1, ...
 problem_data.pressex = @(x, y) x - 5/6*2/3;
 problem_data.gradvelex = @test_stokes_square_bc_graduex;
 problem_data.divvelex = @(x,y) zeros(size(x));
-problem_data.g = @test_stokes_square_neumann_bc; % Neumann bc
+problem_data.g = @test_stokes_pentagon_neumann_bc; % Neumann bc
 
 % 2) CHOICE OF THE DISCRETIZATION PARAMETERS
 clear method_data
-method_data.element_name = 'rt';   % Element type for discretization
-method_data.degree       = [ 1  1];  % Degree of the splines (pressure space)
-method_data.regularity   = [ 0  0];  % Regularity of the splines (pressure space)
-metod_data.symmetric = false;
+method_data.element_name = 'RT';   % Element type for discretization
+method_data.degree       = [ 4  4];  % Degree of the splines (pressure space)
+method_data.regularity   = [ 3  3];  % Regularity of the splines (pressure space)
+method_data.symmetric = false;
 
-mrange = [1:6];
+mrange = [1:5];
 i = 1;
 for m = mrange
 
@@ -60,7 +60,7 @@ factor = 10;
 method_data.Cpen = factor*(min(method_data.degree)+1);
 
 % 3) CALL TO THE SOLVER
-[geometry, msh, space_v, vel, space_p, press, cond_numb(i)] = ...
+[geometry, msh, space_v, vel, space_p, press] = ...
                        solve_stokes (problem_data, method_data);
 
 % 4) POST-PROCESSING
@@ -115,18 +115,21 @@ title('Computed pressure')
 
 % plot divergence velocity solution
 figure3 = figure(3);
-[eu, F] = sp_eval (vel, space_v, geometry, vtk_pts,'divergence');
+[div, F] = sp_eval (vel, space_v, geometry, vtk_pts,'divergence');
 [X, Y]  = deal (squeeze(F(1,:,:)), squeeze(F(2,:,:)));
 subplot (1,2,2)
 eu2 = problem_data.divvelex (X, Y);
 surf (X, Y, eu2)
+view(2)
 axis equal
+colorbar
 title('Exact solution')
 subplot (1,2,1)
-surf (X, Y, eu)
+surf (X, Y, div)
+view(2)
 axis equal
+colorbar
 title('Computed divergence velocity')
-
 
 % plot error velocity
 figure4 = figure(4);
